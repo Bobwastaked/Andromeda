@@ -16,7 +16,7 @@
 }
 
 body {
-  background: #0a0a0a;
+  background: #070707;
   overflow: hidden;
   height: 100vh;
   color: white;
@@ -26,7 +26,6 @@ canvas {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 0;
 }
 
 .container {
@@ -63,11 +62,6 @@ input {
   color: white;
   font-size: 1rem;
   outline: none;
-  transition: 0.3s;
-}
-
-input:focus {
-  border-color: white;
 }
 
 button {
@@ -78,11 +72,6 @@ button {
   color: black;
   font-weight: 600;
   cursor: pointer;
-  transition: 0.2s;
-}
-
-button:hover {
-  background: #ddd;
 }
 </style>
 </head>
@@ -103,9 +92,13 @@ const canvas = document.getElementById("grid");
 const ctx = canvas.getContext("2d");
 
 let width, height;
-let mouse = { x: null, y: null };
-const spacing = 35;
-const radius = 80;
+let pointer = { x: null, y: null };
+
+const spacing = 28;
+const influenceRadius = 180;
+const maxLift = 45;
+
+const dots = [];
 
 function resize() {
   width = canvas.width = window.innerWidth;
@@ -114,45 +107,77 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-window.addEventListener("mousemove", (e) => {
-  mouse.x = e.x;
-  mouse.y = e.y;
-});
-
-window.addEventListener("mouseleave", () => {
-  mouse.x = null;
-  mouse.y = null;
-});
-
-function draw() {
-  ctx.clearRect(0, 0, width, height);
-
+function createGrid() {
+  dots.length = 0;
   for (let x = 0; x < width; x += spacing) {
     for (let y = 0; y < height; y += spacing) {
-
-      let dx = mouse.x - x;
-      let dy = mouse.y - y;
-      let distance = Math.sqrt(dx * dx + dy * dy);
-
-      let offset = 0;
-      let brightness = 60;
-
-      if (distance < radius) {
-        offset = (radius - distance) / 4;
-        brightness = 255;
-      }
-
-      ctx.beginPath();
-      ctx.arc(x, y - offset, 2, 0, Math.PI * 2);
-      ctx.fillStyle = `rgb(${brightness},${brightness},${brightness})`;
-      ctx.fill();
+      dots.push({
+        x,
+        y,
+        baseY: y,
+        offset: 0,
+        brightness: 70
+      });
     }
   }
+}
+createGrid();
+window.addEventListener("resize", createGrid);
 
-  requestAnimationFrame(draw);
+// Mouse
+window.addEventListener("mousemove", e => {
+  pointer.x = e.clientX;
+  pointer.y = e.clientY;
+});
+
+// Touch
+window.addEventListener("touchmove", e => {
+  pointer.x = e.touches[0].clientX;
+  pointer.y = e.touches[0].clientY;
+}, { passive: true });
+
+window.addEventListener("mouseleave", () => {
+  pointer.x = null;
+  pointer.y = null;
+});
+
+function animate() {
+  ctx.clearRect(0, 0, width, height);
+
+  dots.forEach(dot => {
+    let targetOffset = 0;
+    let targetBrightness = 70;
+
+    if (pointer.x !== null) {
+      const dx = pointer.x - dot.x;
+      const dy = pointer.y - dot.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < influenceRadius) {
+        const force = 1 - (distance / influenceRadius);
+
+        // Smooth dome curve (quadratic falloff)
+        const dome = force * force;
+
+        targetOffset = dome * maxLift;
+        targetBrightness = 70 + dome * 185;
+      }
+    }
+
+    // Smooth easing
+    dot.offset += (targetOffset - dot.offset) * 0.12;
+    dot.brightness += (targetBrightness - dot.brightness) * 0.12;
+
+    ctx.beginPath();
+    ctx.arc(dot.x, dot.baseY - dot.offset, 2.4, 0, Math.PI * 2);
+    ctx.fillStyle = `rgb(${dot.brightness},${dot.brightness},${dot.brightness})`;
+    ctx.fill();
+  });
+
+  requestAnimationFrame(animate);
 }
 
-draw();
+animate();
 
 function redirect() {
   let input = document.getElementById("linkInput").value.trim();
